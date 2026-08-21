@@ -1,0 +1,41 @@
+{
+  "business_name": "Alpha Fitness",
+  "website": "https://alphafitness.co.ke",
+  "tagline": "Premium Home & Commercial Gym Equipment in Kenya",
+  "positioning": "Transform Any Space Into a Professional Workout Zone — From Home Gyms to Commercial Facilities. A serious equipment supplier for gyms, hotels, schools and corporates — position as 'supplier' / 'showroom', never as a small retail 'shop'.",
+  "categories": {
+    "Strength": ["Commercial Equipment", "Dumbbells", "Weight Plates", "Multi-Gyms", "Benches", "Barbells", "Kettlebells"],
+    "Cardio": ["Cross Trainers", "Exercise Bikes", "Rowing Machines", "Treadmills"],
+    "Recovery": ["Yoga", "Massage", "Exercise Balls"],
+    "Accessories": ["Gym accessories", "Yoga accessories", "Gym Wear"]
+  },
+  "contact": {
+    "whatsapp": "+254718040612",
+    "phone": "+254718040612",
+    "email_sales": "sales@alphafitness.co.ke",
+    "email_admin": "admin@alphafitness.co.ke",
+    "location": "Alpha Fitness Showroom, Thindigua, behind QuickMart, Kiambu Road, Nairobi",
+    "socials": ["Facebook", "Instagram", "TikTok"]
+  },
+  "delivery": {
+    "coverage": "Countrywide, all 47 counties",
+    "policy": "Delivery cost is quoted upfront before payment, never hidden. Nairobi handled directly; other areas via trusted courier partners.",
+    "typical_lead_time": "Roughly 4 days for in-stock items — confirm per order; large commercial installs can take longer",
+    "installation": "Installation + setup available for treadmills, multigyms and commercial equipment, with handover training on request"
+  },
+  "commercial_tenders": {
+    "audience": "Gyms, hotels, schools, corporates",
+    "offers": [
+      "Itemized quotations formatted for LPO and tender submission",
+      "KRA PIN and company registration documents provided on request",
+      "Nationwide delivery and installation with upfront pricing",
+      "Post-sale spare parts and technician support"
+    ]
+  },
+  "payment_methods": ["M-Pesa", "Bank transfer", "Card"],
+  "showroom": {
+    "visitable": true,
+    "note": "Customers can visit the Thindigua showroom to test equipment before buying. Free parking available."
+  },
+  "policy_pages": ["Terms & Conditions", "Privacy Policy", "Returns & Refunds Policy", "FAQ's", "Fitness Tips", "Workout Programs", "About Us"]
+}
