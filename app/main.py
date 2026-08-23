@@ -2,6 +2,14 @@
 
 Run locally with:
     uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
+
+The startup banner here exists because of a real debugging session: a
+misconfigured Twilio auth token (the literal string "<current>", pasted from
+a placeholder) and a silently-stale LLM_PROVIDER both cost hours to find,
+because nothing in the logs showed what the process had actually loaded.
+Every setting that has burned us once is now reported at boot — secrets as
+fingerprints, never in full — and served from /debug/config so it can be
+checked without a redeploy.
 """
 import logging
 from contextlib import asynccontextmanager
@@ -17,6 +25,41 @@ from app.rag.site_search import SiteIndex
 from app.storage import db
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
+log = logging.getLogger(__name__)
+
+
+def _fingerprint(secret: str) -> str:
+    """Identify a secret without disclosing it.
+
+    The last four characters plus the length are enough to compare against a
+    provider's console at a glance, and enough to catch the failure modes
+    that actually happen: an unset value, a truncated paste, or a literal
+    placeholder like "<current>" (which shows up as len 9, not len 32).
+    """
+    if not secret:
+        return "UNSET"
+    return f"...{secret[-4:]} (len {len(secret)})"
+
+
+def _config_report() -> dict:
+    """Non-secret view of what this process actually loaded."""
+    provider = (settings.llm_provider or "anthropic").lower()
+    if provider == "deepseek":
+        llm_key, llm_model = settings.deepseek_api_key, settings.deepseek_model
+    else:
+        llm_key, llm_model = settings.anthropic_api_key, settings.anthropic_model
+
+    return {
+        "llm_provider": provider,
+        "llm_model": llm_model,
+        "llm_key": _fingerprint(llm_key),
+        "twilio_account_sid": _fingerprint(settings.twilio_account_sid),
+        "twilio_auth_token": _fingerprint(settings.twilio_auth_token),
+        "twilio_whatsapp_number": settings.twilio_whatsapp_number,
+        "validate_twilio_signature": settings.twilio_validate_signature,
+        "database_path": settings.database_path,
+        "escalation_whatsapp_set": bool(settings.human_escalation_whatsapp),
+    }
 
 
 @asynccontextmanager
@@ -30,12 +73,35 @@ async def lifespan(app: FastAPI):
         twilio_client = TwilioClient(settings.twilio_account_sid, settings.twilio_auth_token)
 
     app.state.agent = SalesAgent(settings, catalogue, site_index, twilio_client)
-    print(
-        f"[startup] Loaded {len(catalogue.products)} products, "
-        f"{len(site_index.documents)} site-info topics. "
-        f"Twilio configured: {twilio_client is not None}. "
-        f"Anthropic key set: {bool(settings.anthropic_api_key)}."
+
+    cfg = _config_report()
+    log.info(
+        "[startup] %s products, %s site-info topics loaded | LLM %s (%s) key=%s | "
+        "Twilio sid=%s token=%s number=%s validate_signature=%s | db=%s",
+        len(catalogue.products),
+        len(site_index.documents),
+        cfg["llm_provider"],
+        cfg["llm_model"],
+        cfg["llm_key"],
+        cfg["twilio_account_sid"],
+        cfg["twilio_auth_token"],
+        cfg["twilio_whatsapp_number"],
+        cfg["validate_twilio_signature"],
+        cfg["database_path"],
     )
+
+    # Loud, unmissable warnings for the states that look fine at boot but
+    # fail silently in front of a customer.
+    if not cfg["llm_key"] or cfg["llm_key"] == "UNSET":
+        log.error("[startup] No API key for provider '%s' — every reply will fail.", cfg["llm_provider"])
+    if twilio_client is None:
+        log.error("[startup] Twilio not configured — inbound may work, but no reply can be sent.")
+    if not settings.twilio_validate_signature:
+        log.warning(
+            "[startup] Twilio signature validation is OFF. Anyone who finds the webhook URL "
+            "can post messages as a customer. Acceptable for sandbox testing only."
+        )
+
     yield
 
 
@@ -43,9 +109,27 @@ app = FastAPI(title="Alpha Fitness WhatsApp Sales Agent", lifespan=lifespan)
 app.include_router(twilio_router)
 
 
+@app.get("/")
+def root():
+    # Uptime checkers (and Azure's Always On ping) probe "/" by default; give
+    # them a real 200 instead of a 404 so the logs aren't full of spurious
+    # failures. Not a customer-facing route.
+    return {"status": "ok", "service": "alpha-fitness-whatsapp-agent"}
+
+
 @app.get("/health")
 def health():
     return {"status": "ok"}
+
+
+@app.get("/debug/config")
+def debug_config():
+    """What this process actually loaded. Secrets appear as fingerprints only.
+
+    Checking a setting this way takes one curl; checking it by redeploying
+    and reading the boot log takes two minutes and a container restart.
+    """
+    return _config_report()
 
 
 @app.post("/debug/simulate")
@@ -53,6 +137,11 @@ def simulate(payload: dict, request: Request):
     """Local testing endpoint — bypasses Twilio and WhatsApp entirely.
 
     POST {"phone": "whatsapp:+254700000000", "message": "hi, how much is a treadmill"}
+
+    Note this runs the agent *synchronously* and returns the reply inline, so
+    it also doubles as a timing check: if this takes over ~5s, the real
+    webhook could not have answered inline either — which is exactly why the
+    Twilio channel sends its reply asynchronously.
     """
     agent: SalesAgent = request.app.state.agent
     reply = agent.handle_message(payload["phone"], payload["message"], payload.get("name"))
@@ -61,5 +150,11 @@ def simulate(payload: dict, request: Request):
 
 @app.get("/debug/leads")
 def leads():
-    """Quick read-only view of every lead captured so far."""
+    """Quick read-only view of every lead captured so far.
+
+    WARNING: this returns real customer phone numbers and conversation
+    context with no authentication. Fine while the only contact is a test
+    handset; it must be removed or put behind auth before real customers
+    reach this deployment.
+    """
     return db.all_leads(settings.database_path)
