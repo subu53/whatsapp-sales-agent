@@ -64,17 +64,55 @@ def test_opt_in_resubscribes(client, monkeypatch):
 
 def test_duplicate_message_sid_is_not_reprocessed(client, monkeypatch):
     from app.agent.brain import SalesAgent
+    from app.channels import twilio_whatsapp
     calls = []
     def fake_handle(self, phone, text, name=None):
         calls.append(text)
         return "the real reply"
     monkeypatch.setattr(SalesAgent, "handle_message", fake_handle)
 
+    sent = []
+    monkeypatch.setattr(
+        twilio_whatsapp, "_send_whatsapp",
+        lambda from_whatsapp, to_whatsapp, body: sent.append((to_whatsapp, body)),
+    )
+
     r1 = _post_message(client, "+254700000013", "how much is a treadmill", "SM030")
     r2 = _post_message(client, "+254700000013", "how much is a treadmill", "SM030")  # Twilio retry, same SID
+
+    # The agent runs exactly once, even though Twilio delivered twice.
     assert len(calls) == 1
-    assert "the real reply" in r1.text
+
+    # Both webhook responses are empty TwiML: the reply no longer travels
+    # back inline, it goes out asynchronously via the REST API. That is the
+    # whole point of the split — Twilio times out at 5s and the agent is
+    # slower than that.
+    assert "<Message>" not in r1.text
     assert "<Message>" not in r2.text
+
+    # ...and the real reply was delivered out-of-band, exactly once.
+    assert sent == [("whatsapp:+254700000013", "the real reply")]
+
+
+def test_slow_agent_still_acknowledges_twilio_immediately(client, monkeypatch):
+    """Twilio abandons a webhook after 5s; the ack must not wait on the agent."""
+    import time
+    from app.agent.brain import SalesAgent
+    from app.channels import twilio_whatsapp
+
+    def slow_handle(self, phone, text, name=None):
+        time.sleep(1.0)
+        return "eventually"
+    monkeypatch.setattr(SalesAgent, "handle_message", slow_handle)
+    monkeypatch.setattr(twilio_whatsapp, "_send_whatsapp", lambda *a, **k: None)
+
+    start = time.monotonic()
+    resp = _post_message(client, "+254700000015", "do you have treadmills", "SM050")
+    # TestClient runs background tasks inline after the response is produced,
+    # so assert on the response itself rather than wall-clock: an empty body
+    # proves nothing was waiting on the agent to build a reply.
+    assert resp.status_code == 200
+    assert "<Message>" not in resp.text
 
 
 def test_rate_limit_blocks_after_threshold(client, monkeypatch):
