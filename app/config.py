@@ -25,6 +25,13 @@ class Settings(BaseSettings):
     twilio_whatsapp_number: str = "whatsapp:+14155238886"
     twilio_validate_signature: bool = True
 
+    # --- Meta WhatsApp Cloud API (direct) ---
+    meta_access_token: str = ""
+    meta_phone_number_id: str = ""
+    meta_webhook_verify_token: str = ""
+    meta_app_secret: str = ""  # optional — enables X-Hub-Signature-256 validation
+    meta_graph_api_version: str = "v23.0"
+
     # --- Business config ---
     business_name: str = "Alpha Fitness"
     business_whatsapp: str = "+254718040612"

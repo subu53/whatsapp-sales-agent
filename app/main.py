@@ -18,6 +18,7 @@ from fastapi import FastAPI, Request
 from twilio.rest import Client as TwilioClient
 
 from app.agent.brain import SalesAgent
+from app.channels.meta_whatsapp import router as meta_router
 from app.channels.twilio_whatsapp import router as twilio_router
 from app.config import settings
 from app.rag.catalogue_search import CatalogueIndex
@@ -107,6 +108,7 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(title="Alpha Fitness WhatsApp Sales Agent", lifespan=lifespan)
 app.include_router(twilio_router)
+app.include_router(meta_router)
 
 
 @app.get("/")
