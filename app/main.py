@@ -15,6 +15,7 @@ import logging
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, Request
+from fastapi.responses import HTMLResponse
 from twilio.rest import Client as TwilioClient
 
 from app.agent.brain import SalesAgent
@@ -122,6 +123,28 @@ def root():
 @app.get("/health")
 def health():
     return {"status": "ok"}
+
+
+@app.get("/privacy", response_class=HTMLResponse)
+def privacy_policy():
+    # Minimal privacy policy page — required by Meta to publish the WhatsApp
+    # app. Not the customer-facing agent; just satisfies the Meta App
+    # settings "Privacy policy URL" requirement.
+    return """<!DOCTYPE html>
+<html><head><title>Privacy Policy — Alpha Fitness WhatsApp Sales Agent</title></head>
+<body style="font-family: sans-serif; max-width: 640px; margin: 40px auto; line-height: 1.5;">
+<h1>Privacy Policy</h1>
+<p>This WhatsApp assistant is operated for Alpha Fitness by Esubutech.</p>
+<p>When you message this number, we process your phone number and the
+content of your messages solely to respond to your inquiries about Alpha
+Fitness products and services. We do not sell or share your data with
+third parties. Messages may be processed by third-party AI providers
+(Anthropic or DeepSeek) solely to generate replies, and are retained only
+as long as needed to support your conversation history with us.</p>
+<p>You can stop receiving messages at any time by replying STOP, and
+resume by replying START.</p>
+<p>Contact: <a href="mailto:subaram5@gmail.com">subaram5@gmail.com</a></p>
+</body></html>"""
 
 
 @app.get("/debug/config")
