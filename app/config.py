@@ -45,6 +45,8 @@ class Settings(BaseSettings):
 
     # --- Safety ---
     allowed_fetch_domain: str = "alphafitness.co.ke"
+    # /debug/* routes return 404 unless this is set AND sent as X-Debug-Token.
+    debug_token: str = ""
 
 
 settings = Settings()

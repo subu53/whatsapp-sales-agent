@@ -11,10 +11,11 @@ Every setting that has burned us once is now reported at boot — secrets as
 fingerprints, never in full — and served from /debug/config so it can be
 checked without a redeploy.
 """
+import hmac
 import logging
 from contextlib import asynccontextmanager
 
-from fastapi import FastAPI, Request
+from fastapi import Depends, FastAPI, Header, HTTPException, Request
 from fastapi.responses import HTMLResponse
 from twilio.rest import Client as TwilioClient
 
@@ -150,11 +151,17 @@ third parties. Messages may be processed by third-party AI providers
 as long as needed to support your conversation history with us.</p>
 <p>You can stop receiving messages at any time by replying STOP, and
 resume by replying START.</p>
-<p>Contact: <a href="mailto:subaram5@gmail.com">subaram5@gmail.com</a></p>
+<p>Contact: <a href="mailto:subusam5@gmail.com">subusam5@gmail.com</a></p>
 </body></html>"""
 
 
-@app.get("/debug/config")
+def require_debug_token(x_debug_token: str = Header(default="")) -> None:
+    # 404 rather than 401 so the routes don't advertise that they exist.
+    if not settings.debug_token or not hmac.compare_digest(x_debug_token, settings.debug_token):
+        raise HTTPException(status_code=404)
+
+
+@app.get("/debug/config", dependencies=[Depends(require_debug_token)])
 def debug_config():
     """What this process actually loaded. Secrets appear as fingerprints only.
 
@@ -164,7 +171,7 @@ def debug_config():
     return _config_report()
 
 
-@app.post("/debug/simulate")
+@app.post("/debug/simulate", dependencies=[Depends(require_debug_token)])
 def simulate(payload: dict, request: Request):
     """Local testing endpoint — bypasses Twilio and WhatsApp entirely.
 
@@ -180,13 +187,12 @@ def simulate(payload: dict, request: Request):
     return {"reply": reply}
 
 
-@app.get("/debug/leads")
+@app.get("/debug/leads", dependencies=[Depends(require_debug_token)])
 def leads():
     """Quick read-only view of every lead captured so far.
 
-    WARNING: this returns real customer phone numbers and conversation
-    context with no authentication. Fine while the only contact is a test
-    handset; it must be removed or put behind auth before real customers
-    reach this deployment.
+    Returns real customer phone numbers and conversation context, so it sits
+    behind require_debug_token: a 404 unless DEBUG_TOKEN is set (local .env
+    only, never in production) and sent as the X-Debug-Token header.
     """
     return db.all_leads(settings.database_path)
