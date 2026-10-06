@@ -9,6 +9,7 @@ Start the server first, in one terminal:
 Then, in another terminal:
     python scripts/run_local_sim.py
 """
+import os
 import sys
 
 import httpx
@@ -31,6 +32,7 @@ def main():
             resp = httpx.post(
                 f"{BASE_URL}/debug/simulate",
                 json={"phone": TEST_PHONE, "message": text, "name": "Test Customer"},
+                headers={"X-Debug-Token": os.environ.get("DEBUG_TOKEN", "")},
                 timeout=60,
             )
             resp.raise_for_status()
