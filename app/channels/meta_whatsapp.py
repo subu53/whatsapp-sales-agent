@@ -17,6 +17,7 @@ enabled, which makes Graph reject any call without it (error code 100).
 """
 import hashlib
 import hmac
+import json
 import logging
 
 import httpx
@@ -84,7 +85,16 @@ async def whatsapp_webhook(request: Request, background_tasks: BackgroundTasks):
     # is upstream in the subscription, not in this handler.
     log.info("Meta webhook POST received")
 
-    payload = await request.json()
+    raw = await request.body()
+    if settings.meta_app_secret:
+        expected = "sha256=" + hmac.new(
+            settings.meta_app_secret.encode("utf-8"), raw, hashlib.sha256
+        ).hexdigest()
+        received = request.headers.get("X-Hub-Signature-256", "")
+        if not hmac.compare_digest(expected, received):
+            log.warning("Rejected webhook POST: bad or missing X-Hub-Signature-256")
+            return Response(status_code=403)
+    payload = json.loads(raw)
 
     # Meta sends delivery/read status callbacks through this same endpoint —
     # those have no "messages" key and must be accepted (200) and ignored,
