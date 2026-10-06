@@ -7,6 +7,7 @@ from pathlib import Path
 from typing import Optional
 
 from app.agent.llm_client import build_llm_client
+from app.agent.price_guard import numbers_in_customer_text, numbers_in_tool_result, unverified_amounts
 from app.agent.tools import TOOL_IMPLS, TOOLS, ToolContext
 from app.storage import db
 
@@ -51,7 +52,7 @@ class SalesAgent:
         )
 
         try:
-            final_text = self._run_loop(messages, ctx)
+            final_text = self._run_loop(messages, ctx, numbers_in_customer_text(incoming_text))
         except Exception:
             # Anything unexpected (auth failure, network error, rate limit,
             # a malformed response) must degrade to a safe reply, never a
@@ -70,7 +71,12 @@ class SalesAgent:
         db.append_message(self.settings.database_path, phone_number, "assistant", final_text)
         return final_text
 
-    def _run_loop(self, messages: list[dict], ctx: ToolContext) -> str:
+    def _run_loop(self, messages: list[dict], ctx: ToolContext, customer_amounts: Optional[set[int]] = None) -> str:
+        # Numbers the tools actually returned during this turn, plus any the
+        # customer typed. A price in the final reply has to come from here,
+        # whatever the model decided.
+        allowed_amounts: set[int] = set()
+        customer_amounts = set(customer_amounts or ())
         for _ in range(self.settings.max_tool_iterations):
             response = self.client.create(
                 messages=messages,
@@ -80,7 +86,7 @@ class SalesAgent:
             )
 
             if response.stop_reason != "tool_use":
-                return _extract_text(response)
+                return self._guard_prices(_extract_text(response), allowed_amounts, customer_amounts, ctx)
 
             messages.append({"role": "assistant", "content": response.content})
             tool_results = []
@@ -95,6 +101,8 @@ class SalesAgent:
                         result = impl(ctx=ctx, **block.input)
                     except Exception as exc:  # a broken tool call must never crash the conversation
                         result = {"error": f"Tool '{block.name}' failed: {exc}"}
+                if "error" not in result:
+                    allowed_amounts |= numbers_in_tool_result(result)
                 tool_results.append({
                     "type": "tool_result",
                     "tool_use_id": block.id,
@@ -114,6 +122,26 @@ class SalesAgent:
             "Let me get the team to confirm that for you exactly — "
             "someone will follow up on this chat shortly."
         )
+
+    def _guard_prices(self, reply: str, tool_amounts: set[int], customer_amounts: set[int], ctx: ToolContext) -> str:
+        bad = unverified_amounts(reply, tool_amounts, customer_amounts)
+        if not bad:
+            return reply
+        logger.warning("price_guard blocked a reply for %s: unverified amounts %s", ctx.phone_number, sorted(bad))
+        try:
+            TOOL_IMPLS["escalate_to_human"](
+                ctx=ctx,
+                reason=f"price_guard: reply quoted KES {sorted(bad)} with no matching tool result this turn.",
+            )
+        except Exception:
+            pass
+        return PRICE_CHECK_REPLY
+
+
+PRICE_CHECK_REPLY = (
+    "Let me get the team to confirm the exact price for you so you get the right figure. "
+    "Someone will follow up on this chat shortly."
+)
 
 
 def _extract_text(response) -> str:
