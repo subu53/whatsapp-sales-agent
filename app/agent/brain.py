@@ -7,7 +7,7 @@ from pathlib import Path
 from typing import Optional
 
 from app.agent.llm_client import build_llm_client
-from app.agent.price_guard import numbers_in_customer_text, numbers_in_tool_result, unverified_amounts
+from app.agent.price_guard import numbers_in_customer_text, prices_in_tool_result, unverified_amounts
 from app.agent.tools import TOOL_IMPLS, TOOLS, ToolContext
 from app.storage import db
 
@@ -72,10 +72,11 @@ class SalesAgent:
         return final_text
 
     def _run_loop(self, messages: list[dict], ctx: ToolContext, customer_amounts: Optional[set[int]] = None) -> str:
-        # Numbers the tools actually returned during this turn, plus any the
-        # customer typed. A price in the final reply has to come from here,
-        # whatever the model decided.
-        allowed_amounts: set[int] = set()
+        # Prices the tools actually returned during this turn (price fields
+        # and currency-marked amounts only), each with a note of where it
+        # came from, plus any figure the customer typed. A price in the final
+        # reply has to come from here, whatever the model decided.
+        allowed_amounts: dict[int, str] = {}
         customer_amounts = set(customer_amounts or ())
         for _ in range(self.settings.max_tool_iterations):
             response = self.client.create(
@@ -102,7 +103,8 @@ class SalesAgent:
                     except Exception as exc:  # a broken tool call must never crash the conversation
                         result = {"error": f"Tool '{block.name}' failed: {exc}"}
                 if "error" not in result:
-                    allowed_amounts |= numbers_in_tool_result(result)
+                    for amount, source in prices_in_tool_result(result, block.name).items():
+                        allowed_amounts.setdefault(amount, source)
                 tool_results.append({
                     "type": "tool_result",
                     "tool_use_id": block.id,
@@ -123,11 +125,15 @@ class SalesAgent:
             "someone will follow up on this chat shortly."
         )
 
-    def _guard_prices(self, reply: str, tool_amounts: set[int], customer_amounts: set[int], ctx: ToolContext) -> str:
-        bad = unverified_amounts(reply, tool_amounts, customer_amounts)
+    def _guard_prices(self, reply: str, tool_amounts, customer_amounts: set[int], ctx: ToolContext) -> str:
+        bad = unverified_amounts(reply, set(tool_amounts), customer_amounts)
         if not bad:
             return reply
-        logger.warning("price_guard blocked a reply for %s: unverified amounts %s", ctx.phone_number, sorted(bad))
+        sources = dict(tool_amounts) if isinstance(tool_amounts, dict) else {}
+        logger.warning(
+            "price_guard blocked a reply for %s: unverified amounts %s; prices available this turn: %s",
+            ctx.phone_number, sorted(bad), sources or sorted(tool_amounts),
+        )
         try:
             TOOL_IMPLS["escalate_to_human"](
                 ctx=ctx,
