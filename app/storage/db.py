@@ -48,6 +48,18 @@ CREATE TABLE IF NOT EXISTS messages (
 -- (a slow tool call, a transient error) — without this, a retried delivery
 -- re-runs the whole agent loop and the customer gets the same question
 -- answered twice, or worse, two different answers.
+-- One row per reply check (see app/agent/reply_review.py): which checks
+-- fired on a draft or its rewrite, and the verdict. This is what turns
+-- "the guard works" into a rate you can measure week to week.
+CREATE TABLE IF NOT EXISTS reply_reviews (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    phone_number TEXT,
+    stage TEXT,         -- 'draft' | 'rewrite'
+    verdict TEXT,       -- 'pass' | 'revise' | 'block'
+    codes TEXT,         -- JSON list of check codes that fired
+    created_at REAL
+);
+
 CREATE TABLE IF NOT EXISTS processed_messages (
     message_sid TEXT PRIMARY KEY,
     processed_at REAL
@@ -181,6 +193,30 @@ def mark_message_processed(db_path: str, message_sid: str) -> None:
         )
 
 
+def log_reply_review(db_path: str, phone_number: str, stage: str, verdict: str, codes: list[str]) -> None:
+    with _connect(db_path) as conn:
+        conn.execute(
+            "INSERT INTO reply_reviews (phone_number, stage, verdict, codes, created_at) VALUES (?, ?, ?, ?, ?)",
+            (phone_number, stage, verdict, json.dumps(codes), time.time()),
+        )
+
+
+def reply_review_summary(db_path: str, since_epoch: float = 0.0) -> dict:
+    """Counts per verdict and per check code since a time, for a weekly look."""
+    with _connect(db_path) as conn:
+        rows = conn.execute(
+            "SELECT stage, verdict, codes FROM reply_reviews WHERE created_at >= ?", (since_epoch,)
+        ).fetchall()
+    verdicts: dict[str, int] = {}
+    codes: dict[str, int] = {}
+    for row in rows:
+        key = f"{row['stage']}:{row['verdict']}"
+        verdicts[key] = verdicts.get(key, 0) + 1
+        for code in json.loads(row["codes"] or "[]"):
+            codes[code] = codes.get(code, 0) + 1
+    return {"reviews": len(rows), "verdicts": verdicts, "codes": codes}
+
+
 def all_leads(db_path: str) -> list[dict]:
     """Simple export for a human to review — e.g. to page through in a follow-up script."""
     with _connect(db_path) as conn:
@@ -204,5 +240,6 @@ def purge_older_than(db_path: str, cutoff_epoch: float) -> dict:
         ]
         for phone in stale:
             conn.execute("DELETE FROM messages WHERE phone_number = ?", (phone,))
+            conn.execute("DELETE FROM reply_reviews WHERE phone_number = ?", (phone,))
             conn.execute("DELETE FROM conversations WHERE phone_number = ?", (phone,))
     return {"deleted_conversations": len(stale), "phone_numbers": stale}

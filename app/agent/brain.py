@@ -8,6 +8,7 @@ from typing import Optional
 
 from app.agent.llm_client import build_llm_client
 from app.agent.price_guard import numbers_in_customer_text, prices_in_tool_result, unverified_amounts
+from app.agent.reply_review import BLOCK, TurnFacts, collect_facts, review_reply, rewrite_instruction
 from app.agent.tools import TOOL_IMPLS, TOOLS, ToolContext
 from app.storage import db
 
@@ -39,6 +40,7 @@ class SalesAgent:
 
         history = db.get_recent_messages(self.settings.database_path, phone_number, limit=20)
         messages = [{"role": m["role"], "content": m["content"]} for m in history]
+        last_reply = next((m["content"] for m in reversed(history) if m["role"] == "assistant"), "")
 
         ctx = ToolContext(
             phone_number=phone_number,
@@ -52,7 +54,7 @@ class SalesAgent:
         )
 
         try:
-            final_text = self._run_loop(messages, ctx, numbers_in_customer_text(incoming_text))
+            final_text = self._run_loop(messages, ctx, numbers_in_customer_text(incoming_text), last_reply)
         except Exception:
             # Anything unexpected (auth failure, network error, rate limit,
             # a malformed response) must degrade to a safe reply, never a
@@ -71,13 +73,21 @@ class SalesAgent:
         db.append_message(self.settings.database_path, phone_number, "assistant", final_text)
         return final_text
 
-    def _run_loop(self, messages: list[dict], ctx: ToolContext, customer_amounts: Optional[set[int]] = None) -> str:
+    def _run_loop(
+        self,
+        messages: list[dict],
+        ctx: ToolContext,
+        customer_amounts: Optional[set[int]] = None,
+        last_reply: str = "",
+    ) -> str:
         # Prices the tools actually returned during this turn (price fields
         # and currency-marked amounts only), each with a note of where it
         # came from, plus any figure the customer typed. A price in the final
         # reply has to come from here, whatever the model decided.
         allowed_amounts: dict[int, str] = {}
         customer_amounts = set(customer_amounts or ())
+        facts = TurnFacts(customer_amounts=customer_amounts, last_reply=last_reply)
+        tool_texts: list[str] = []
         for _ in range(self.settings.max_tool_iterations):
             response = self.client.create(
                 messages=messages,
@@ -87,7 +97,9 @@ class SalesAgent:
             )
 
             if response.stop_reason != "tool_use":
-                return self._guard_prices(_extract_text(response), allowed_amounts, customer_amounts, ctx)
+                facts.prices = allowed_amounts
+                facts.tool_text = "\n".join(tool_texts).lower()
+                return self._review_and_send(_extract_text(response), facts, messages, ctx)
 
             messages.append({"role": "assistant", "content": response.content})
             tool_results = []
@@ -105,6 +117,8 @@ class SalesAgent:
                 if "error" not in result:
                     for amount, source in prices_in_tool_result(result, block.name).items():
                         allowed_amounts.setdefault(amount, source)
+                    collect_facts(result, facts)
+                    tool_texts.append(json.dumps(result, default=str))
                 tool_results.append({
                     "type": "tool_result",
                     "tool_use_id": block.id,
@@ -125,6 +139,69 @@ class SalesAgent:
             "someone will follow up on this chat shortly."
         )
 
+    def _review_and_send(self, draft: str, facts: TurnFacts, messages: list[dict], ctx: ToolContext) -> str:
+        """Every reply passes the code checks in reply_review before it goes out.
+
+        pass   -> sent as written.
+        revise -> the model gets one rewrite; the rewrite is checked again.
+                  If only style problems remain, it is sent (style never
+                  holds a customer hostage). A blocking problem is not.
+        block  -> one rewrite too, since most blocks are a fact the model
+                  can simply drop. If the rewrite still blocks, the customer
+                  gets a holding reply and a human is called in.
+        """
+        review = review_reply(draft, facts)
+        self._log_review(ctx, "draft", review)
+        if review.verdict == "pass":
+            return draft
+
+        rewrite = self._rewrite(draft, review, messages)
+        if rewrite:
+            second = review_reply(rewrite, facts)
+            self._log_review(ctx, "rewrite", second)
+            if second.verdict != BLOCK:
+                return rewrite
+            review = second
+
+        blocked = [i for i in review.issues if i.severity == BLOCK]
+        if not blocked:
+            return draft  # rewrite failed or came back empty; the draft was only a style problem
+        reason = "reply_review: " + "; ".join(f"{i.code} ({i.detail})" for i in blocked)
+        logger.warning("reply_review blocked a reply for %s: %s", ctx.phone_number, reason)
+        try:
+            TOOL_IMPLS["escalate_to_human"](ctx=ctx, reason=reason)
+        except Exception:
+            pass
+        if all(i.code.startswith(("price", "customer_figure")) for i in blocked):
+            return PRICE_CHECK_REPLY
+        return HOLDING_REPLY
+
+    def _rewrite(self, draft: str, review, messages: list[dict]) -> str:
+        """One extra model call, no tools needed. Anything odd returns ""."""
+        try:
+            response = self.client.create(
+                messages=messages + [
+                    {"role": "assistant", "content": draft},
+                    {"role": "user", "content": rewrite_instruction(review)},
+                ],
+                system=self.system_prompt,
+                tools=TOOLS,
+                max_tokens=self.settings.max_reply_tokens,
+            )
+        except Exception:
+            logger.exception("reply_review rewrite call failed")
+            return ""
+        if response.stop_reason == "tool_use":
+            return ""
+        text = _extract_text(response)
+        return "" if text == _EMPTY_REPLY else text
+
+    def _log_review(self, ctx: ToolContext, stage: str, review) -> None:
+        try:
+            db.log_reply_review(ctx.db_path, ctx.phone_number, stage, review.verdict, review.codes)
+        except Exception:
+            logger.exception("could not store reply review")
+
     def _guard_prices(self, reply: str, tool_amounts, customer_amounts: set[int], ctx: ToolContext) -> str:
         bad = unverified_amounts(reply, set(tool_amounts), customer_amounts)
         if not bad:
@@ -144,12 +221,20 @@ class SalesAgent:
         return PRICE_CHECK_REPLY
 
 
+HOLDING_REPLY = (
+    "Let me double-check that with the team so I give you the right answer. "
+    "Someone will follow up on this chat shortly."
+)
+
 PRICE_CHECK_REPLY = (
     "Let me get the team to confirm the exact price for you so you get the right figure. "
     "Someone will follow up on this chat shortly."
 )
 
 
+_EMPTY_REPLY = "Sorry, could you rephrase that?"
+
+
 def _extract_text(response) -> str:
     parts = [block.text for block in response.content if block.type == "text"]
-    return "\n".join(parts).strip() or "Sorry, could you rephrase that?"
+    return "\n".join(parts).strip() or _EMPTY_REPLY
