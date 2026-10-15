@@ -33,18 +33,25 @@ class Settings(BaseSettings):
     meta_graph_api_version: str = "v23.0"
 
     # --- Business config ---
-    business_name: str = "Alpha Fitness"
-    business_whatsapp: str = "+254718040612"
-    business_website: str = "https://alphafitness.co.ke"
+    # Defaults describe a sample business so the repo runs out of the box.
+    # A live deployment sets the real values as environment variables
+    # (App Settings on Azure) and keeps the business's files outside the repo.
+    business_name: str = "Sample Fitness Supply"
+    business_whatsapp: str = "+254700000000"
+    business_website: str = "https://www.example.com"
     human_escalation_whatsapp: str = ""
+    operator_name: str = "Esubu Tech"
+    privacy_contact_email: str = "subusam5@gmail.com"
 
     # --- Storage ---
     database_path: str = "data/leads.db"
     catalogue_path: str = "data/catalogue/products.json"
     site_info_path: str = "data/site_info.json"
+    # Empty uses the bundled sample prompt at app/agent/prompts/system_prompt.md.
+    system_prompt_path: str = ""
 
     # --- Safety ---
-    allowed_fetch_domain: str = "alphafitness.co.ke"
+    allowed_fetch_domain: str = "example.com"
     # /debug/* routes return 404 unless this is set AND sent as X-Debug-Token.
     debug_token: str = ""
 

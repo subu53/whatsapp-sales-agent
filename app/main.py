@@ -11,6 +11,7 @@ Every setting that has burned us once is now reported at boot — secrets as
 fingerprints, never in full — and served from /debug/config so it can be
 checked without a redeploy.
 """
+from html import escape
 import hmac
 import logging
 from contextlib import asynccontextmanager
@@ -115,7 +116,7 @@ async def lifespan(app: FastAPI):
     yield
 
 
-app = FastAPI(title="Alpha Fitness WhatsApp Sales Agent", lifespan=lifespan)
+app = FastAPI(title="WhatsApp Sales Agent", lifespan=lifespan)
 app.include_router(twilio_router)
 app.include_router(meta_router)
 
@@ -125,7 +126,7 @@ def root():
     # Uptime checkers (and Azure's Always On ping) probe "/" by default; give
     # them a real 200 instead of a 404 so the logs aren't full of spurious
     # failures. Not a customer-facing route.
-    return {"status": "ok", "service": "alpha-fitness-whatsapp-agent"}
+    return {"status": "ok", "service": "whatsapp-sales-agent"}
 
 
 @app.get("/health")
@@ -138,20 +139,23 @@ def privacy_policy():
     # Minimal privacy policy page — required by Meta to publish the WhatsApp
     # app. Not the customer-facing agent; just satisfies the Meta App
     # settings "Privacy policy URL" requirement.
-    return """<!DOCTYPE html>
-<html><head><title>Privacy Policy — Alpha Fitness WhatsApp Sales Agent</title></head>
+    business = escape(settings.business_name)
+    operator = escape(settings.operator_name)
+    contact = escape(settings.privacy_contact_email)
+    return f"""<!DOCTYPE html>
+<html><head><title>Privacy Policy — {business} WhatsApp Sales Agent</title></head>
 <body style="font-family: sans-serif; max-width: 640px; margin: 40px auto; line-height: 1.5;">
 <h1>Privacy Policy</h1>
-<p>This WhatsApp assistant is operated for Alpha Fitness by Esubutech.</p>
+<p>This WhatsApp assistant is operated for {business} by {operator}.</p>
 <p>When you message this number, we process your phone number and the
-content of your messages solely to respond to your inquiries about Alpha
-Fitness products and services. We do not sell or share your data with
+content of your messages solely to respond to your inquiries about
+{business} products and services. We do not sell or share your data with
 third parties. Messages may be processed by third-party AI providers
 (Anthropic or DeepSeek) solely to generate replies, and are retained only
 as long as needed to support your conversation history with us.</p>
 <p>You can stop receiving messages at any time by replying STOP, and
 resume by replying START.</p>
-<p>Contact: <a href="mailto:subusam5@gmail.com">subusam5@gmail.com</a></p>
+<p>Contact: <a href="mailto:{contact}">{contact}</a></p>
 </body></html>"""
 
 
