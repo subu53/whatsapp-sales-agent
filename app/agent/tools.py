@@ -32,7 +32,7 @@ TOOLS = [
     {
         "name": "search_catalogue",
         "description": (
-            "Search the Alpha Fitness product catalogue by free-text query "
+            "Search the product catalogue by free-text query "
             "(product type, use case, budget, brand, etc). Returns matching "
             "products with real prices, specs, and URLs. Always use this "
             "before recommending or pricing any product."
@@ -58,7 +58,7 @@ TOOLS = [
     {
         "name": "search_site_info",
         "description": (
-            "Search Alpha Fitness business info: delivery/shipping policy, "
+            "Search the business info: delivery/shipping policy, "
             "payment methods, commercial/tender process, showroom, contact "
             "details, category structure. Use for anything that isn't a "
             "specific product."
@@ -72,17 +72,17 @@ TOOLS = [
     {
         "name": "fetch_live_page",
         "description": (
-            "Fetch and read a live page from alphafitness.co.ke when the "
+            "Fetch and read a live page from the business's own website when the "
             "pre-indexed catalogue and site info don't cover what's needed "
             "(e.g. exact wording of a policy page). Only works on "
-            "alphafitness.co.ke — any other domain is refused."
+            "the configured business domain. Any other domain is refused."
         ),
         "input_schema": {
             "type": "object",
             "properties": {
                 "url_or_path": {
                     "type": "string",
-                    "description": "Full URL or path on alphafitness.co.ke, e.g. '/returns-refunds-policy/'.",
+                    "description": "Full URL or path on the business website, e.g. '/returns-refunds-policy/'.",
                 }
             },
             "required": ["url_or_path"],
@@ -153,7 +153,7 @@ def _tool_fetch_live_page(ctx: ToolContext, url_or_path: str) -> dict:
         return {"error": f"Refused: this tool can only fetch pages on {ctx.allowed_fetch_domain}."}
 
     try:
-        resp = httpx.get(url, timeout=10, headers={"User-Agent": "AlphaFitnessSalesAgent/1.0"}, follow_redirects=True)
+        resp = httpx.get(url, timeout=10, headers={"User-Agent": "WhatsAppSalesAgent/1.0"}, follow_redirects=True)
         resp.raise_for_status()
     except httpx.HTTPError as exc:
         return {"error": f"Could not fetch {url}: {exc}"}
@@ -181,7 +181,7 @@ def _tool_escalate_to_human(ctx: ToolContext, reason: str) -> dict:
             ctx.twilio_client.messages.create(
                 from_=ctx.business_whatsapp_from,
                 to=f"whatsapp:{ctx.human_escalation_whatsapp}",
-                body=f"[Alpha Fitness Agent] Escalation from {ctx.phone_number}: {reason}",
+                body=f"[Sales Agent] Escalation from {ctx.phone_number}: {reason}",
             )
             notified = True
         except Exception:

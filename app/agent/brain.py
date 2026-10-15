@@ -11,7 +11,7 @@ from app.agent.price_guard import numbers_in_customer_text, numbers_in_tool_resu
 from app.agent.tools import TOOL_IMPLS, TOOLS, ToolContext
 from app.storage import db
 
-_PROMPT_PATH = Path(__file__).parent / "prompts" / "system_prompt.md"
+_DEFAULT_PROMPT_PATH = Path(__file__).parent / "prompts" / "system_prompt.md"
 logger = logging.getLogger("sales_agent")
 
 # A customer must never see a raw stack trace or "Internal Server Error".
@@ -24,6 +24,17 @@ FALLBACK_REPLY = (
 )
 
 
+def load_system_prompt(settings) -> str:
+    """Read the prompt from SYSTEM_PROMPT_PATH, or the bundled sample if unset,
+    and fill the {{business_name}}-style placeholders from settings."""
+    custom = getattr(settings, "system_prompt_path", "")
+    path = Path(custom) if custom else _DEFAULT_PROMPT_PATH
+    text = path.read_text(encoding="utf-8")
+    for key in ("business_name", "business_website", "allowed_fetch_domain"):
+        text = text.replace("{{" + key + "}}", str(getattr(settings, key, "")))
+    return text
+
+
 class SalesAgent:
     def __init__(self, settings, catalogue, site_index, twilio_client=None):
         self.settings = settings
@@ -31,7 +42,7 @@ class SalesAgent:
         self.site_index = site_index
         self.twilio_client = twilio_client
         self.client = build_llm_client(settings)
-        self.system_prompt = _PROMPT_PATH.read_text()
+        self.system_prompt = load_system_prompt(settings)
 
     def handle_message(self, phone_number: str, incoming_text: str, profile_name: Optional[str] = None) -> str:
         db.get_or_create_conversation(self.settings.database_path, phone_number, profile_name)
