@@ -370,11 +370,11 @@
 
 <div class="wrap">
 
-  <div class="eyebrow">Field notes &middot; Alpha Fitness build</div>
+  <div class="eyebrow">Field notes &middot; WhatsApp sales agent build</div>
   <h1 class="title">Agent Engineering Patterns, from One Real Build</h1>
   <p class="dek">Patterns pulled directly out of one real WhatsApp sales-agent build — not a framework validated across many projects — written up so they transfer <em>as a starting point</em> to the next agent project. Sections 13 and 14 are specifically about the line between what's proven and what's still assumed.</p>
   <div class="meta">
-    <span>Source: Alpha Fitness WhatsApp sales agent</span>
+    <span>Source: WhatsApp sales agent for a fitness equipment supplier</span>
     <span>Stack: FastAPI &middot; Claude (tool use) &middot; BM25 &middot; SQLite &middot; Twilio</span>
   </div>
 
@@ -506,7 +506,7 @@
 
     <div class="callout">
       <div class="label">Real example</div>
-      <p>Alpha Fitness's own product pages show simulated "48 people viewing this" / "7 sold in the last 3 hours" counters — near-certainly a plugin-generated urgency widget, not live analytics. The agent's prompt explicitly instructs it never to reproduce or cite numbers like that. Fake urgency isn't a persuasion technique — it's a trust-destroying trick, and it's banned outright rather than left to judgment.</p>
+      <p>The client's own product pages show simulated "48 people viewing this" / "7 sold in the last 3 hours" counters — near-certainly a plugin-generated urgency widget, not live analytics. The agent's prompt explicitly instructs it never to reproduce or cite numbers like that. Fake urgency isn't a persuasion technique — it's a trust-destroying trick, and it's banned outright rather than left to judgment.</p>
     </div>
   </section>
 
@@ -623,7 +623,7 @@ except Exception:
 
   <section class="chapter" id="s13">
     <h2 class="chapter-title"><span class="num">13</span> Reusability — a tested-once hypothesis, not a proven claim</h2>
-    <p>The engine has zero business-specific logic in it. Everything specific to Alpha Fitness lives in exactly three files — the system prompt, the product catalogue, the site-info file. That's a real, deliberate design property. It's also only been pointed at one domain so far, so it's worth being precise about what that does and doesn't prove — calling it "reusable" before a second real domain runs through it is a hypothesis, not a demonstrated fact.</p>
+    <p>The engine has zero business-specific logic in it. Everything specific to the client lives in exactly three files — the system prompt, the product catalogue, the site-info file. That's a real, deliberate design property. It's also only been pointed at one domain so far, so it's worth being precise about what that does and doesn't prove — calling it "reusable" before a second real domain runs through it is a hypothesis, not a demonstrated fact.</p>
 
     <p>How you'd actually port it:</p>
     <ol class="prod-list">
@@ -657,6 +657,6 @@ except Exception:
     <p>None of this is a reason not to run this today — it's the honest boundary of what "production-worthy for a small business's real WhatsApp line, starting now" means, versus an enterprise-scale, adversarially-hardened, fully observable platform. Treat it as the next backlog, not a disclaimer.</p>
   </section>
 
-  <footer>Written alongside the Alpha Fitness WhatsApp agent build &middot; keep this next to the codebase, not instead of it</footer>
+  <footer>Written alongside the WhatsApp sales agent build &middot; keep this next to the codebase, not instead of it</footer>
 
 </div>

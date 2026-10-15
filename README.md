@@ -71,6 +71,13 @@ python scripts/run_local_sim.py   # chat with the agent in the terminal, no What
 | `HUMAN_ESCALATION_WHATSAPP` | Number notified on handoff |
 | `RATE_LIMIT_MAX_MESSAGES`, `RATE_LIMIT_WINDOW_SECONDS` | Per-contact limit |
 | `ALLOWED_FETCH_DOMAIN` | The only domain the live-fetch tool may call |
+| `BUSINESS_NAME`, `BUSINESS_WEBSITE`, `BUSINESS_WHATSAPP` | The business the agent sells for |
+| `SYSTEM_PROMPT_PATH`, `CATALOGUE_PATH`, `SITE_INFO_PATH` | The business's prompt, catalogue and site info. An empty prompt path uses the bundled sample |
+| `OPERATOR_NAME`, `PRIVACY_CONTACT_EMAIL` | Shown on the `/privacy` page |
+
+### Running it for a real business
+
+The repo ships a sample business, so it runs out of the box. For a live deployment, keep the business's own prompt, catalogue and site info outside the repo, point the three path settings at them, and set the business settings as environment variables. The engine code stays the same for every business.
 | `DEBUG_TOKEN` | Local only. Unlocks `/debug/*` and `scripts/run_local_sim.py` |
 
 Keys go in `.env`, which is gitignored. Never commit them.
