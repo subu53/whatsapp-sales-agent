@@ -1,6 +1,6 @@
-# WhatsApp sales agent for Alpha Fitness
+# WhatsApp sales agent for a fitness equipment supplier
 
-An LLM sales agent that talks to inbound leads on WhatsApp for [Alpha Fitness](https://alphafitness.co.ke), a fitness-equipment retailer in Nairobi. It answers from the real product catalogue and site content, asks about use case and budget before recommending anything, logs the lead, and hands the chat to a salesperson when it should.
+An LLM sales agent that talks to inbound leads on WhatsApp for a fitness equipment supplier in Nairobi. It answers from the real product catalogue and site content, asks about use case and budget before recommending anything, logs the lead, and hands the chat to a salesperson when it should.
 
 It runs on the Meta WhatsApp Cloud API, deployed on Azure App Service. The original Twilio channel is still in the codebase and shares the same agent code.
 
@@ -20,7 +20,7 @@ SalesAgent.handle_message         app/agent/brain.py
    │  load last 20 messages (SQLite)
    │  tool loop, max 6 rounds:
    │    search_catalogue · get_product_by_id · search_site_info
-   │    fetch_live_page (alphafitness.co.ke only)
+   │    fetch_live_page (supplier's own site only)
    │    log_lead_info · escalate_to_human
    ▼
 price guard                       app/agent/price_guard.py
